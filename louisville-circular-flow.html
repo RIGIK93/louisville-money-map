@@ -74,7 +74,8 @@
     font-family:"Libre Franklin",system-ui,sans-serif;
     -webkit-font-smoothing:antialiased;overflow:hidden;
   }
-  .app{display:grid;grid-template-columns:1fr 372px;grid-template-rows:auto 1fr;height:100vh;height:100dvh}
+  .app{display:grid;grid-template-columns:1fr 372px;grid-template-rows:auto 1fr;height:100vh;height:100dvh;position:relative;transition:grid-template-columns .26s ease}
+  .app.collapsed{grid-template-columns:1fr 0px}
 
   /* ---------- header ---------- */
   header{grid-column:1 / -1;display:flex;align-items:baseline;gap:22px;flex-wrap:wrap;
@@ -179,6 +180,16 @@
   aside{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;overflow-x:hidden;position:relative}
   aside::-webkit-scrollbar{width:9px}
   aside::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px}
+  /* collapse toggle — a tab on the sidebar seam (desktop) / a pill (phone) */
+  .aside-toggle{position:absolute;z-index:9;right:372px;top:50%;transform:translateY(-50%);
+    width:23px;height:62px;display:flex;align-items:center;justify-content:center;gap:6px;
+    background:var(--panel);border:1px solid var(--line);border-right:0;border-radius:11px 0 0 11px;
+    color:var(--ink-soft);cursor:pointer;box-shadow:var(--shadow-lg);font-family:inherit;font-weight:600;font-size:13px;
+    transition:right .26s ease,color .12s}
+  .aside-toggle:hover{color:var(--copper)}
+  .app.collapsed .aside-toggle{right:0}
+  .aside-toggle .lbl{display:none}
+  .aside-toggle .chev{font-size:18px;line-height:1}
   .pad{padding:20px 20px 30px}
   .eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.13em;color:var(--copper);font-weight:700;margin-bottom:7px}
   .p-title{font-family:"Fraunces",serif;font-weight:600;font-size:26px;line-height:1.05;letter-spacing:-.015em;margin:0 0 4px;text-wrap:balance}
@@ -234,11 +245,19 @@
   .backbtn.show{display:inline-flex}
 
   @media (max-width:880px){
-    .app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
-    aside{border-left:0;border-top:1px solid var(--line);max-height:46vh}
+    .app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;transition:none}
+    aside{border-left:0;border-top:1px solid var(--line);max-height:46vh;transition:max-height .26s ease}
+    .app.collapsed{grid-template-columns:1fr}
+    .app.collapsed aside{max-height:0;border-top-color:transparent}
+    .pad{padding-bottom:74px}
     .legend{display:none}
     .stats{gap:14px}
     .detail{left:10px;top:10px}
+    .aside-toggle{position:fixed;right:12px;bottom:12px;top:auto;transform:none;
+      width:auto;height:38px;padding:0 15px;border:1px solid var(--copper);border-radius:20px;
+      background:var(--copper);color:#fff;box-shadow:var(--shadow-lg)}
+    .aside-toggle:hover{color:#fff}
+    .aside-toggle .lbl{display:inline}
   }
 </style>
 
@@ -278,7 +297,11 @@
     <div class="hint" id="hint">Drag to pan · scroll to zoom · click a bubble</div>
   </div>
 
-  <aside><div class="pad" id="panel"></div></aside>
+  <aside id="aside"><div class="pad" id="panel"></div></aside>
+
+  <button class="aside-toggle" id="asideToggle" aria-label="Collapse details panel" aria-expanded="true" title="Toggle details panel">
+    <span class="chev" aria-hidden="true">›</span><span class="lbl">Details</span>
+  </button>
 </div>
 
 <script>
@@ -762,4 +785,23 @@ requestAnimationFrame(()=>requestAnimationFrame(fit));
 window.addEventListener('load',()=>{if(!userTouched)fit();});
 window.addEventListener('resize',()=>{if(!userTouched)fit();});
 if(window.ResizeObserver){new ResizeObserver(()=>{if(!userTouched)fit();}).observe(svg);}
+
+/* ---- collapsible sidebar (phone + desktop) ---- */
+const appEl=document.querySelector('.app');
+const asideToggle=document.getElementById('asideToggle');
+const chevEl=asideToggle.querySelector('.chev');
+function updateChev(){
+  const collapsed=appEl.classList.contains('collapsed');
+  const phone=window.matchMedia('(max-width:880px)').matches;
+  chevEl.textContent = phone ? (collapsed?'⌃':'⌄') : (collapsed?'‹':'›');
+  asideToggle.setAttribute('aria-expanded', String(!collapsed));
+  asideToggle.setAttribute('aria-label', collapsed?'Show details panel':'Hide details panel');
+}
+asideToggle.addEventListener('click',()=>{
+  appEl.classList.toggle('collapsed');
+  updateChev();
+  fit();[160,300].forEach(t=>setTimeout(fit,t));  // recenter the map into the reclaimed space
+});
+window.addEventListener('resize',updateChev);
+updateChev();
 </script>
