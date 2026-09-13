@@ -306,6 +306,15 @@
 </div>
 
 <script>
+/* Ensure the page scales to the real device width on phones — if the host's
+   wrapper omitted or overrode the viewport meta, the layout can otherwise be
+   rendered at a desktop width and shrunk to fit, defeating responsiveness. */
+(function(){try{
+  let m=document.querySelector('meta[name="viewport"]');
+  if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');document.head.appendChild(m);}
+  m.setAttribute('content','width=device-width, initial-scale=1, viewport-fit=cover');
+}catch(_){}})();
+
 /* ============================================================
    LOUISVILLE / JEFFERSON COUNTY METRO — circular flow model
    Anchors sourced (BEA, BLS, Census, Louisville Metro Gov).
@@ -841,10 +850,17 @@ function updateChev(){
   asideToggle.setAttribute('aria-expanded', String(!collapsed));
   asideToggle.setAttribute('aria-label', collapsed?'Show details panel':'Hide details panel');
 }
+function isPhoneDevice(){
+  try{
+    const coarse=matchMedia('(pointer:coarse)').matches||('ontouchstart' in window);
+    const minDim=Math.min(screen.width||9999,screen.height||9999); // physical device width, ignores iframe scaling
+    return coarse && minDim<=640;   // phones only (excludes tablets ≥ ~744)
+  }catch(_){return false;}
+}
 function updateNarrow(){
   const w=appEl.clientWidth||window.innerWidth||960;   // real container width, robust to embed scaling
   const wasNarrow=isNarrow();
-  appEl.classList.toggle('narrow', w<=880);
+  appEl.classList.toggle('narrow', w<=880 || isPhoneDevice());
   if(isNarrow()!==wasNarrow){updateChev(); if(!userTouched)fit();}
 }
 asideToggle.addEventListener('click',()=>{
