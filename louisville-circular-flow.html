@@ -454,9 +454,8 @@ const defs=document.createElementNS(SVGNS,'defs');
 Object.entries(CAT).forEach(([key,info])=>{
   const m=document.createElementNS(SVGNS,'marker');
   m.setAttribute('id','arw-'+key);m.setAttribute('viewBox','0 0 10 10');
-  m.setAttribute('refX','8.5');m.setAttribute('refY','5');
-  m.setAttribute('markerUnits','userSpaceOnUse');   /* fixed head size, independent of line width */
-  m.setAttribute('markerWidth','21');m.setAttribute('markerHeight','21');
+  m.setAttribute('refX','8');m.setAttribute('refY','5');
+  m.setAttribute('markerWidth','7');m.setAttribute('markerHeight','7');
   m.setAttribute('orient','auto-start-reverse');
   const p=document.createElementNS(SVGNS,'path');
   p.setAttribute('d','M0,1 L9,5 L0,9 Z');p.setAttribute('fill',`var(${info.c})`);
@@ -489,16 +488,22 @@ compNodes.forEach(c=>{
 
 /* flows */
 const maxV=Math.max(...FLOWS.map(f=>f.v));
-function flowPath(a,b,off){
-  const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,px=-uy,py=ux;
-  const sx=a.x+ux*(a.r+3)+px*off,sy=a.y+uy*(a.r+3)+py*off;      /* small gap off source */
-  const ex=b.x-ux*(b.r+14)+px*off,ey=b.y-uy*(b.r+14)+py*off;    /* room for arrowhead at target */
-  const bow=off*0.9+Math.sign(off||1)*L*0.05;
-  return {d:`M${sx},${sy} Q${(sx+ex)/2+px*bow},${(sy+ey)/2+py*bow} ${ex},${ey}`,
-          mx:(sx+ex)/2+px*(bow*0.62),my:(sy+ey)/2+py*(bow*0.62)};
+/* Every flow bows to the LEFT of its own direction of travel. Because a
+   return flow travels the opposite way, its "left" is the other side — so the
+   two directions of a pair always arc to opposite sides of the straight line:
+   outgoing curves above, incoming curves below (from a node's viewpoint). */
+function flowPath(a,b){
+  const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L;
+  const nx=uy,ny=-ux;                 // left-hand normal of the travel direction
+  const ep=10, bow=24+L*0.10;         // small endpoint shift + arc depth
+  const sx=a.x+ux*a.r+nx*ep, sy=a.y+uy*a.r+ny*ep;
+  const ex=b.x-ux*b.r+nx*ep, ey=b.y-uy*b.r+ny*ep;
+  const cx=(sx+ex)/2+nx*bow, cy=(sy+ey)/2+ny*bow;
+  return {d:`M${sx},${sy} Q${cx},${cy} ${ex},${ey}`,
+          mx:(sx+ex)/2+nx*(bow*0.66), my:(sy+ey)/2+ny*(bow*0.66)};
 }
 FLOWS.forEach((f,i)=>{
-  const a=nodeById[f.f],b=nodeById[f.t],path=flowPath(a,b,f.off),w=4+(f.v/maxV)*17,col=`var(${CAT[f.cat].c})`;
+  const a=nodeById[f.f],b=nodeById[f.t],path=flowPath(a,b),w=4+(f.v/maxV)*22,col=`var(${CAT[f.cat].c})`;
   const g=document.createElementNS(SVGNS,'g');g.setAttribute('class','flow');
   g.dataset.from=f.f;g.dataset.to=f.t;g.style.color=col;
   const hit=document.createElementNS(SVGNS,'path');hit.setAttribute('d',path.d);hit.setAttribute('class','hit');hit.setAttribute('stroke-width',Math.max(w+16,22));
