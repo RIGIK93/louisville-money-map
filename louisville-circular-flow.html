@@ -1,0 +1,757 @@
+<title>Louisville Money Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Libre+Franklin:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#f4f0e8;
+    --panel:#fbf8f2;
+    --panel-2:#efe9dd;
+    --ink:#241f18;
+    --ink-soft:#5c5346;
+    --ink-faint:#8a7f6d;
+    --line:#ddd3c1;
+    --line-strong:#c8bca4;
+    --copper:#b5732e;
+    --copper-bright:#d9963f;
+    --node-fill:#ffffff;
+    --node-2:#f6f1e7;
+    --node-stroke:#cabfa9;
+    --node-shadow:rgba(60,45,20,.14);
+    --canvas-grid:rgba(120,105,80,.07);
+    --c-consumption:#d99a24;
+    --c-income:#1f9e83;
+    --c-tax:#c1503a;
+    --c-govt:#4272b8;
+    --c-capital:#7d5cbf;
+    --c-trade:#4a9a5f;
+    --c-transfer:#2a8ca6;
+    --shadow-lg:0 18px 40px -22px rgba(40,30,10,.5);
+  }
+  :root:not([data-theme="light"]){
+    @media (prefers-color-scheme: dark){
+      --ground:#14191e;
+      --panel:#1b2228;
+      --panel-2:#232c33;
+      --ink:#eee6d7;
+      --ink-soft:#b3a993;
+      --ink-faint:#847a68;
+      --line:#2e373f;
+      --line-strong:#3d4852;
+      --copper:#e0a24a;
+      --copper-bright:#f0bd6a;
+      --node-fill:#212a31;
+      --node-2:#1a2127;
+      --node-stroke:#3a454e;
+      --node-shadow:rgba(0,0,0,.45);
+      --canvas-grid:rgba(180,170,150,.05);
+      --c-consumption:#e6b24a;
+      --c-income:#39c1a2;
+      --c-tax:#e07059;
+      --c-govt:#6699e0;
+      --c-capital:#a084e0;
+      --c-trade:#5fc179;
+      --c-transfer:#45b3d0;
+      --shadow-lg:0 20px 50px -20px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#14191e; --panel:#1b2228; --panel-2:#232c33;
+    --ink:#eee6d7; --ink-soft:#b3a993; --ink-faint:#847a68;
+    --line:#2e373f; --line-strong:#3d4852;
+    --copper:#e0a24a; --copper-bright:#f0bd6a;
+    --node-fill:#212a31; --node-2:#1a2127; --node-stroke:#3a454e;
+    --node-shadow:rgba(0,0,0,.45); --canvas-grid:rgba(180,170,150,.05);
+    --c-consumption:#e6b24a; --c-income:#39c1a2; --c-tax:#e07059;
+    --c-govt:#6699e0; --c-capital:#a084e0; --c-trade:#5fc179; --c-transfer:#45b3d0;
+    --shadow-lg:0 20px 50px -20px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--ground);color:var(--ink);
+    font-family:"Libre Franklin",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+  }
+  .app{display:grid;grid-template-columns:1fr 372px;grid-template-rows:auto 1fr;height:100vh;height:100dvh}
+
+  /* ---------- header ---------- */
+  header{grid-column:1 / -1;display:flex;align-items:baseline;gap:22px;flex-wrap:wrap;
+    padding:14px 22px 13px;border-bottom:1px solid var(--line);background:var(--panel);z-index:5}
+  .brand{display:flex;flex-direction:column;gap:1px;margin-right:6px}
+  .brand h1{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:22px;letter-spacing:-.015em;margin:0;line-height:1}
+  .brand .sub{font-size:11.5px;color:var(--ink-faint);letter-spacing:.02em;margin-top:3px}
+  .brand .sub b{color:var(--copper);font-weight:600}
+  .stats{display:flex;gap:20px;flex-wrap:wrap;margin-left:auto}
+  .stat{display:flex;flex-direction:column;gap:1px}
+  .stat .v{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:16px;color:var(--ink);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+  .stat .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-faint);font-weight:600}
+
+  /* ---------- canvas ---------- */
+  .stage{position:relative;overflow:hidden;background:
+    radial-gradient(circle at 52% 45%, color-mix(in srgb, var(--copper) 6%, transparent), transparent 62%),var(--ground)}
+  #grid{position:absolute;inset:0;pointer-events:none;
+    background-image:linear-gradient(var(--canvas-grid) 1px,transparent 1px),linear-gradient(90deg,var(--canvas-grid) 1px,transparent 1px);
+    background-size:34px 34px}
+  svg#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab;display:block}
+  svg#map.grabbing{cursor:grabbing}
+
+  /* detail-level visibility */
+  #map .node.industry,#map .spoke.ind{display:none}
+  #map .node.company,#map .spoke.comp{display:none}
+  #map.lvl-industries .node.industry,#map.lvl-industries .spoke.ind{display:inline}
+  #map.lvl-companies  .node.industry,#map.lvl-companies  .spoke.ind{display:inline}
+  #map.lvl-companies  .node.company, #map.lvl-companies  .spoke.comp{display:inline}
+
+  /* selection dimming */
+  svg#map.has-sel .flow{opacity:.09}
+  svg#map.has-sel .flow.lit{opacity:1}
+  svg#map.has-sel .node{opacity:.28}
+  svg#map.has-sel .node.lit{opacity:1}
+  svg#map.has-sel .spoke{opacity:.08}
+  svg#map.has-sel .spoke.lit{opacity:.85}
+  svg#map.has-sel .flow-label{opacity:0}
+  svg#map.has-sel .flow.lit .flow-label{opacity:1}
+
+  .flow{transition:opacity .18s}
+  .flow path.hit{stroke:transparent;fill:none;cursor:pointer}
+  .flow path.line{fill:none;stroke-linecap:round;transition:stroke-width .15s,filter .15s}
+  .flow.hover path.line{filter:brightness(1.12)}
+  .flow.lit path.line{filter:drop-shadow(0 0 5px currentColor) drop-shadow(0 0 2px currentColor)}
+  .flow-label{opacity:.92;transition:opacity .18s;pointer-events:none}
+  .flow-label rect{fill:var(--panel);stroke:var(--line)}
+  .flow-label text{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:12px;fill:var(--ink);
+    text-anchor:middle;dominant-baseline:middle;font-variant-numeric:tabular-nums}
+
+  .spoke{stroke:var(--line-strong);stroke-width:1.4;fill:none;stroke-dasharray:2 4;opacity:.5;transition:opacity .18s}
+  .spoke.comp{stroke-width:1.1;stroke-dasharray:1.5 4;opacity:.38}
+  .spoke.lit{stroke:var(--copper)}
+
+  .node{cursor:pointer;transition:opacity .18s}
+  .node .halo{fill:none;opacity:0;transition:opacity .18s}
+  .node.lit .halo,.node:hover .halo{opacity:1}
+  .node .body{fill:var(--node-fill);stroke:var(--node-stroke);stroke-width:1.6;filter:drop-shadow(0 6px 10px var(--node-shadow))}
+  .node.sector .body{stroke-width:2.2}
+  .node.industry .body{fill:var(--node-2)}
+  .node.company .body{fill:var(--node-2);stroke-width:1.3;filter:drop-shadow(0 3px 5px var(--node-shadow))}
+  .node.lit .body{stroke:var(--copper)}
+  .node .ic{text-anchor:middle;dominant-baseline:central}
+  .node.sector .ic{font-size:26px}
+  .node.industry .ic{font-size:21px}
+  .node.company .ic{font-size:14px}
+  .node .nm{font-family:"Fraunces",Georgia,serif;font-weight:600;text-anchor:middle;fill:var(--ink);dominant-baseline:middle}
+  .node.sector .nm{font-size:19px}
+  .node.industry .nm{font-size:13px;font-family:"Libre Franklin",sans-serif;font-weight:600}
+  .node.company .nm{font-size:10px;font-family:"Libre Franklin",sans-serif;font-weight:600}
+  .node .subv{font-family:"IBM Plex Mono",monospace;fill:var(--ink-soft);text-anchor:middle;dominant-baseline:middle;font-variant-numeric:tabular-nums}
+  .node.sector .subv{font-size:11px}
+  .node.industry .subv{font-size:10px}
+  .node.company .subv{font-size:8.5px}
+
+  /* floating controls */
+  .ctrl{position:absolute;z-index:6;background:color-mix(in srgb,var(--panel) 93%,transparent);
+    border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lg);backdrop-filter:blur(6px)}
+  .detail{left:16px;top:14px;padding:10px 12px 11px}
+  .detail h4{margin:0 0 8px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-faint);font-weight:700}
+  .seg{display:flex;background:var(--panel-2);border-radius:9px;padding:3px;gap:2px}
+  .seg button{border:0;background:transparent;color:var(--ink-soft);font-family:inherit;font-weight:600;font-size:12px;
+    padding:6px 11px;border-radius:7px;cursor:pointer;transition:all .13s;white-space:nowrap}
+  .seg button:hover{color:var(--ink)}
+  .seg button.on{background:var(--copper);color:#fff;box-shadow:0 2px 6px -1px color-mix(in srgb,var(--copper) 60%,transparent)}
+  .detail .cnt{font-size:10.5px;color:var(--ink-faint);margin-top:7px}
+  .detail .cnt b{color:var(--ink-soft);font-family:"IBM Plex Mono",monospace}
+
+  .legend{right:16px;top:14px;padding:11px 13px 12px;max-width:210px}
+  .legend h4{margin:0 0 8px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-faint);font-weight:700}
+  .legend .row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-soft);padding:2.5px 0}
+  .legend .sw{width:20px;height:4px;border-radius:2px;flex:none}
+
+  .zoom{left:16px;bottom:16px;display:flex;flex-direction:column;overflow:hidden;padding:0}
+  .zoom button{width:40px;height:38px;border:0;background:transparent;color:var(--ink);font-size:18px;cursor:pointer;
+    font-family:inherit;display:grid;place-items:center;border-bottom:1px solid var(--line);transition:background .12s}
+  .zoom button:last-child{border-bottom:0;font-size:11px;letter-spacing:.03em;font-weight:600}
+  .zoom button:hover{background:var(--panel-2);color:var(--copper)}
+  .hint{position:absolute;left:66px;bottom:22px;font-size:11px;color:var(--ink-faint);background:var(--panel);
+    border:1px solid var(--line);padding:5px 10px;border-radius:20px;z-index:6;pointer-events:none}
+
+  /* ---------- side panel ---------- */
+  aside{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;overflow-x:hidden;position:relative}
+  aside::-webkit-scrollbar{width:9px}
+  aside::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:6px}
+  .pad{padding:20px 20px 30px}
+  .eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.13em;color:var(--copper);font-weight:700;margin-bottom:7px}
+  .p-title{font-family:"Fraunces",serif;font-weight:600;font-size:26px;line-height:1.05;letter-spacing:-.015em;margin:0 0 4px;text-wrap:balance}
+  .p-role{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-faint);font-weight:600;margin-bottom:13px}
+  .p-blurb{font-size:13.5px;line-height:1.55;color:var(--ink-soft);margin:0 0 18px}
+  .p-blurb b{color:var(--ink)}
+
+  .io{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+  .io .box{border:1px solid var(--line);border-radius:11px;padding:11px 12px;background:var(--panel-2)}
+  .io .box .lab{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;display:flex;align-items:center;gap:6px}
+  .io .in .lab{color:var(--c-income)}
+  .io .out .lab{color:var(--c-tax)}
+  .io .box .amt{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:23px;margin-top:5px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+
+  .flist{margin:0 0 20px}
+  .flist h5{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-faint);font-weight:700;margin:0 0 9px;display:flex;align-items:center;gap:7px}
+  .flist h5 .arrow{font-family:"IBM Plex Mono",monospace}
+  .fitem{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+  .fitem .bar{width:3px;border-radius:2px;flex:none;align-self:stretch;min-height:26px}
+  .fitem .mid{flex:1;min-width:0}
+  .fitem .who{font-size:12.5px;font-weight:600;color:var(--ink)}
+  .fitem .desc{font-size:11.5px;color:var(--ink-faint);line-height:1.4;margin-top:1px}
+  .fitem .val{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:14px;color:var(--ink);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+  /* company ranked list */
+  .clist{margin:2px 0 18px}
+  .crow{display:flex;align-items:center;gap:11px;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+  .crow:hover .cnm{color:var(--copper)}
+  .crank{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-faint);width:16px;text-align:right;flex:none}
+  .cmid{flex:1;min-width:0}
+  .cnm{font-size:13px;font-weight:600;color:var(--ink);transition:color .12s}
+  .cnote{font-size:11px;color:var(--ink-faint);line-height:1.35;margin-top:1px}
+  .cbar-wrap{flex:none;width:96px;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+  .cemp{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+  .cbar{height:5px;border-radius:3px;background:var(--copper);opacity:.85}
+  .cbar-bg{width:100%;height:5px;border-radius:3px;background:var(--panel-2)}
+
+  .emp{margin:0 0 18px}
+  .emp h5{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-faint);font-weight:700;margin:0 0 8px}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-soft);background:var(--panel-2);
+    border:1px solid var(--line);border-radius:20px;padding:4px 11px;margin:0 6px 6px 0}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.click{cursor:pointer}
+  .chip.click:hover{border-color:var(--copper);color:var(--ink)}
+
+  .btn{display:inline-flex;align-items:center;gap:7px;font-family:inherit;font-weight:600;font-size:12.5px;cursor:pointer;
+    background:var(--copper);color:#fff;border:0;border-radius:9px;padding:9px 14px;margin-bottom:18px;transition:filter .12s}
+  .btn:hover{filter:brightness(1.07)}
+  .note{font-size:11px;line-height:1.5;color:var(--ink-faint);border-top:1px solid var(--line);padding-top:13px;margin-top:6px}
+  .note b{color:var(--ink-soft)}
+  .backbtn{display:none;align-items:center;gap:6px;font-size:12px;color:var(--copper);background:none;border:0;cursor:pointer;
+    font-family:inherit;font-weight:600;padding:0;margin-bottom:14px}
+  .backbtn.show{display:inline-flex}
+
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
+    aside{border-left:0;border-top:1px solid var(--line);max-height:46vh}
+    .legend{display:none}
+    .stats{gap:14px}
+    .detail{left:10px;top:10px}
+  }
+</style>
+
+<div class="app">
+  <header>
+    <div class="brand">
+      <h1>The Louisville Money Map</h1>
+      <div class="sub">A circular-flow model of the <b>Louisville&nbsp;/&nbsp;Jefferson&nbsp;County</b> metro economy · figures 2023–24</div>
+    </div>
+    <div class="stats" id="statstrip"></div>
+  </header>
+
+  <div class="stage">
+    <div id="grid"></div>
+    <svg id="map" role="img" aria-label="Interactive circular flow diagram of the Louisville economy"></svg>
+
+    <div class="ctrl detail">
+      <h4>Detail level</h4>
+      <div class="seg" id="seg">
+        <button data-lvl="sectors">Sectors</button>
+        <button data-lvl="industries" class="on">Industries</button>
+        <button data-lvl="companies">Companies</button>
+      </div>
+      <div class="cnt" id="detailcnt"></div>
+    </div>
+
+    <div class="ctrl legend">
+      <h4>Money flows</h4>
+      <div id="legendrows"></div>
+    </div>
+
+    <div class="ctrl zoom">
+      <button id="zin" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zout" title="Zoom out" aria-label="Zoom out">−</button>
+      <button id="zreset" title="Fit to view" aria-label="Fit to view">FIT</button>
+    </div>
+    <div class="hint" id="hint">Drag to pan · scroll to zoom · click a bubble</div>
+  </div>
+
+  <aside><div class="pad" id="panel"></div></aside>
+</div>
+
+<script>
+/* ============================================================
+   LOUISVILLE / JEFFERSON COUNTY METRO — circular flow model
+   Anchors sourced (BEA, BLS, Census, Louisville Metro Gov).
+   Flow magnitudes are illustrative estimates scaled to the
+   region's ~$98B GDP & ~$89.5B personal income.
+   Company job counts are approximate LOCAL employment.
+   Values in US$ billions unless noted.
+   ============================================================ */
+
+const CAT = {
+  consumption:{c:'--c-consumption', name:'Consumer spending'},
+  income:     {c:'--c-income',      name:'Wages, profit & rent'},
+  tax:        {c:'--c-tax',         name:'Taxes'},
+  govt:       {c:'--c-govt',        name:'Government outlays'},
+  capital:    {c:'--c-capital',     name:'Saving & investment'},
+  trade:      {c:'--c-trade',       name:'Trade (exports/imports)'},
+  transfer:   {c:'--c-transfer',    name:'Federal transfers'},
+};
+
+const NODES = [
+  { id:'house', kind:'sector', x:440, y:820, r:92, ic:'🏠', nm:'Households', sub:'1.37M people',
+    role:'Income earners & consumers',
+    blurb:'The region’s 1.37 million residents supply labour and capital to employers and earn about $89.5B a year in personal income — roughly $65,205 per person. Most of it flows straight back out as spending, taxes and savings.' },
+
+  { id:'biz', kind:'sector', x:1360, y:800, r:100, ic:'🏭', nm:'Businesses', sub:'717.7k jobs',
+    role:'Producing firms — six industry pillars',
+    blurb:'Every private employer in the metro. Together they generate ~$98B of output, pay wages, sell to households, government and the world, and reinvest. Raise the detail level to break this open into industries and their top companies.' },
+
+  { id:'govt', kind:'sector', x:930, y:250, r:76, ic:'🏛️', nm:'Government', sub:'$1.2B budget',
+    role:'Local & state public sector',
+    blurb:'Louisville Metro Government runs on a ~$1.2B budget (FY26); the occupational/payroll tax alone supplies ~45% of its general fund. With the Commonwealth it taxes households and firms and spends on services, safety, schools and public pay.' },
+
+  { id:'fin', kind:'sector', x:600, y:1330, r:76, ic:'🏦', nm:'Financial Sector', sub:'~38k jobs',
+    role:'Banks, insurers & capital markets',
+    blurb:'Finance & insurance gathers household savings and channels them — with outside capital — into business investment and lending. It is the loop that turns what residents set aside into what firms build.' },
+
+  { id:'row', kind:'sector', x:1360, y:1360, r:84, ic:'🌎', nm:'Rest of World', sub:'exports + federal',
+    role:'Other regions, abroad & Washington',
+    blurb:'Everything beyond the metro line: customers who buy Louisville’s bourbon, trucks and appliances; suppliers of imported inputs; and the federal government, whose transfers (Social Security, Medicare, Medicaid) pour money into the region.' },
+
+  /* industry satellites of Businesses */
+  { id:'logi', kind:'industry', x:1360, y:340, r:60, ic:'📦', nm:'Logistics & Trade', sub:'166.7k jobs', role:'Largest sector',
+    blurb:'Trade, transportation & utilities — the metro’s biggest employer at 166,700 jobs, anchored by UPS Worldport, the world’s largest automated air-cargo hub (~26,000 jobs, ~$10.4B annual regional impact).' },
+  { id:'mfg', kind:'industry', x:1880, y:490, r:60, ic:'🔧', nm:'Manufacturing', sub:'85.7k jobs', role:'Automotive & appliances',
+    blurb:'Advanced manufacturing employs 85,700. Ford runs two plants here (Kentucky Truck & Louisville Assembly) and GE Appliances’ Appliance Park is a global appliance base.' },
+  { id:'health', kind:'industry', x:2180, y:820, r:62, ic:'⚕️', nm:'Health & Education', sub:'112.4k jobs', role:'Care, insurance & schools',
+    blurb:'Education & health services account for 112,400 jobs. Humana is headquartered here; Norton, Baptist and UofL Health are major systems, alongside JCPS and the University of Louisville.' },
+  { id:'finind', kind:'industry', x:1980, y:1230, r:60, ic:'💳', nm:'Finance & Insurance', sub:'~38k jobs', role:'Banking & corporate',
+    blurb:'Banking, insurance and corporate services — roughly 38,000 jobs — provide the capital and professional backbone for the rest of the economy.' },
+  { id:'bourbon', kind:'industry', x:980, y:1120, r:60, ic:'🥃', nm:'Bourbon & Beverage', sub:'~⅓ world bourbon', role:'Distilling & tourism',
+    blurb:'Louisville distilleries produce more than a third of the world’s bourbon. Brown-Forman is headquartered here, and the Urban Bourbon Trail weaves spirits, food & beverage and tourism together.' },
+  { id:'svc', kind:'industry', x:900, y:400, r:58, ic:'🛍️', nm:'Other Services', sub:'HQs · retail · leisure', role:'Corporate & consumer',
+    blurb:'Corporate headquarters (Yum! Brands, Texas Roadhouse, Papa Johns, Churchill Downs), professional services, retail, restaurants and hospitality — the broad service base that keeps daily life running.' },
+];
+
+/* top companies per industry — approximate LOCAL employment */
+const COMPANIES = {
+  logi:[
+    {nm:'UPS Worldport', short:'UPS Worldport', ic:'✈️', emp:26000, note:'World’s largest automated air-cargo hub'},
+    {nm:'Kroger', short:'Kroger', ic:'🛒', emp:10000, note:'Grocery retail & distribution'},
+    {nm:'Walmart', short:'Walmart', ic:'🏬', emp:6000, note:'Retail stores & Supercenters'},
+    {nm:'Amazon', short:'Amazon', ic:'📦', emp:4000, note:'Fulfillment & delivery'},
+    {nm:'LG&E and KU Energy', short:'LG&E / KU', ic:'⚡', emp:3300, note:'Electric & gas utility (PPL)'},
+    {nm:'Republic Services', short:'Republic Svcs', ic:'♻️', emp:1000, note:'Waste & recycling'},
+  ],
+  mfg:[
+    {nm:'Ford Motor Company', short:'Ford', ic:'🚚', emp:13000, note:'Kentucky Truck & Louisville Assembly plants'},
+    {nm:'GE Appliances', short:'GE Appliances', ic:'🧊', emp:8500, note:'Appliance Park (Haier)'},
+    {nm:'Zeon Chemicals', short:'Zeon', ic:'🧪', emp:600, note:'Synthetic rubber & specialty polymers'},
+    {nm:'Hitachi Astemo', short:'Hitachi Astemo', ic:'⚙️', emp:500, note:'Automotive components'},
+    {nm:'Kentucky Trailer', short:'KY Trailer', ic:'🚛', emp:400, note:'Custom trailers & mobile units'},
+    {nm:'American Synthetic Rubber', short:'ASRC', ic:'🛞', emp:350, note:'Synthetic rubber for tires'},
+  ],
+  health:[
+    {nm:'Norton Healthcare', short:'Norton', ic:'🏥', emp:18000, note:'Largest hospital system in the region'},
+    {nm:'Jefferson County Public Schools', short:'JCPS', ic:'🎓', emp:15000, note:'State’s largest district (~96k students)'},
+    {nm:'UofL Health', short:'UofL Health', ic:'🏥', emp:13000, note:'Academic hospital system'},
+    {nm:'Humana', short:'Humana', ic:'💙', emp:10000, note:'Fortune 100 health-benefits HQ'},
+    {nm:'Baptist Health', short:'Baptist Health', ic:'✚', emp:9000, note:'Statewide hospital network'},
+    {nm:'University of Louisville', short:'U of L', ic:'🎓', emp:7000, note:'Public research university'},
+    {nm:'BrightSpring Health', short:'BrightSpring', ic:'🏠', emp:3500, note:'Home & community health HQ'},
+  ],
+  finind:[
+    {nm:'JPMorgan Chase', short:'JPMorgan', ic:'🏦', emp:2500, note:'Banking & operations center'},
+    {nm:'Kentucky Farm Bureau Insurance', short:'KY Farm Bureau', ic:'🛡️', emp:1500, note:'State’s largest domestic insurer'},
+    {nm:'PNC Bank', short:'PNC', ic:'🏦', emp:1400, note:'Regional retail & commercial bank'},
+    {nm:'Republic Bank & Trust', short:'Republic Bank', ic:'🏦', emp:1000, note:'Louisville-based bank HQ'},
+    {nm:'Stock Yards Bank & Trust', short:'Stock Yards', ic:'🏦', emp:800, note:'Louisville-based bank HQ'},
+    {nm:'Fifth Third Bank', short:'Fifth Third', ic:'🏦', emp:700, note:'Regional bank'},
+  ],
+  bourbon:[
+    {nm:'Brown-Forman', short:'Brown-Forman', ic:'🥃', emp:1300, note:'Fortune 500 spirits HQ — Old Forester, Woodford, Jack Daniel’s'},
+    {nm:'Heaven Hill', short:'Heaven Hill', ic:'🥃', emp:900, note:'Bernheim distillery; family-owned distiller'},
+    {nm:'Diageo (Bulleit)', short:'Diageo', ic:'🥃', emp:180, note:'Stitzel-Weller & Bulleit experiences'},
+    {nm:'Angel’s Envy', short:'Angel’s Envy', ic:'👼', emp:120, note:'Bacardi-owned downtown distillery'},
+    {nm:'Kentucky Peerless', short:'Peerless', ic:'🥃', emp:60, note:'Craft distillery, revived family brand'},
+    {nm:'Michter’s Fort Nelson', short:'Michter’s', ic:'🥃', emp:45, note:'Small-batch distillery & tourism'},
+  ],
+  svc:[
+    {nm:'Louisville hospitality & tourism', short:'Hospitality', ic:'🏨', emp:2000, note:'Hotels, dining & Derby tourism (illustrative)'},
+    {nm:'Professional services (PwC, EY…)', short:'Prof. services', ic:'💼', emp:1200, note:'Accounting, legal & consulting cluster'},
+    {nm:'Yum! Brands', short:'Yum! Brands', ic:'🍗', emp:1000, note:'Fortune 500 HQ — KFC, Taco Bell, Pizza Hut'},
+    {nm:'Churchill Downs Inc.', short:'Churchill Downs', ic:'🏇', emp:1000, note:'Racing & gaming HQ — the Kentucky Derby'},
+    {nm:'Texas Roadhouse', short:'Texas Roadhouse', ic:'🥩', emp:900, note:'Fortune 500 restaurant HQ'},
+    {nm:'Papa Johns', short:'Papa Johns', ic:'🍕', emp:600, note:'Global pizza HQ (Jeffersontown)'},
+  ],
+};
+
+const FLOWS = [
+  {f:'house', t:'biz',  v:62, cat:'consumption', lab:'Consumer spending',
+     d:'Groceries, rent, cars, healthcare, dining — household purchases of goods & services.', off:40},
+  {f:'biz', t:'house',  v:66, cat:'income', lab:'Wages, salaries & profit',
+     d:'Pay to workers plus proprietor income, dividends, interest & rent to owners.', off:-40},
+  {f:'house', t:'govt', v:9,  cat:'tax', lab:'Household taxes',
+     d:'Occupational/payroll, state income and local property taxes paid by residents.', off:16},
+  {f:'biz', t:'govt',   v:4,  cat:'tax', lab:'Business taxes',
+     d:'Corporate, occupational and property taxes paid by employers.', off:16},
+  {f:'govt', t:'house', v:7,  cat:'govt', lab:'Services, benefits & pay',
+     d:'Public safety, schools, parks, social services and government payroll.', off:-16},
+  {f:'govt', t:'biz',   v:5,  cat:'govt', lab:'Procurement & contracts',
+     d:'Government purchases of goods, services and construction from local firms.', off:-16},
+  {f:'house', t:'fin',  v:9,  cat:'capital', lab:'Savings & deposits',
+     d:'Bank deposits, retirement and investment contributions set aside by households.', off:16},
+  {f:'fin', t:'biz',    v:16, cat:'capital', lab:'Investment & lending',
+     d:'Loans and capital channelled to firms for equipment, buildings and expansion.', off:0},
+  {f:'row', t:'biz',    v:18, cat:'trade', lab:'Exports',
+     d:'Bourbon, trucks, appliances and air-cargo services sold to the rest of the world.', off:26},
+  {f:'biz', t:'row',    v:20, cat:'trade', lab:'Imports & inputs',
+     d:'Parts, materials, fuel and finished goods bought from outside the region.', off:-26},
+  {f:'row', t:'house',  v:23, cat:'transfer', lab:'Federal transfers',
+     d:'Social Security, Medicare, Medicaid and other federal payments into the region.', off:26},
+  {f:'house', t:'row',  v:17, cat:'tax', lab:'Federal taxes & outflows',
+     d:'Federal income & payroll taxes and out-of-region spending leaving the metro.', off:-26},
+];
+
+const STATS = [
+  {k:'Metro GDP', v:'$98B'},
+  {k:'Personal income', v:'$89.5B'},
+  {k:'Total jobs', v:'717.7k'},
+  {k:'Population', v:'1.37M'},
+  {k:'Per-capita income', v:'$65.2k'},
+];
+
+/* ============================================================ */
+const SVGNS='http://www.w3.org/2000/svg';
+const VB={w:2560, h:1620};   // design-space bounds (NOT an SVG viewBox)
+const svg=document.getElementById('map');
+/* Deliberately NO viewBox: the SVG user space equals CSS pixels, so the
+   viewport group's transform is the ONLY scale — 1 unit = 1 screen pixel.
+   This keeps fit() correct and makes drag track the cursor 1:1. */
+const nodeById=Object.fromEntries(NODES.map(n=>[n.id,n]));
+const money=v=> v>=1 ? '$'+v+'B' : '$'+(v*1000)+'M';
+const empFmt=n=> n>=1000 ? (n/1000).toFixed(n%1000===0?0:1).replace(/\.0$/,'')+'k' : n;
+
+/* build company node objects with positions ringed around each industry */
+const compNodes=[];
+Object.entries(COMPANIES).forEach(([ind,list])=>{
+  const parent=nodeById[ind];
+  const N=list.length, R=155;
+  list.forEach((c,i)=>{
+    const ang=(-90 + i*360/N) * Math.PI/180;
+    compNodes.push({...c, id:'c_'+ind+'_'+i, kind:'company', parent:ind,
+      x:parent.x+Math.cos(ang)*R, y:parent.y+Math.sin(ang)*R, r:36});
+  });
+});
+compNodes.forEach(c=>nodeById[c.id]=c);
+
+/* ---- defs: arrow markers per category ---- */
+const defs=document.createElementNS(SVGNS,'defs');
+Object.entries(CAT).forEach(([key,info])=>{
+  const m=document.createElementNS(SVGNS,'marker');
+  m.setAttribute('id','arw-'+key);m.setAttribute('viewBox','0 0 10 10');
+  m.setAttribute('refX','8');m.setAttribute('refY','5');
+  m.setAttribute('markerWidth','7');m.setAttribute('markerHeight','7');
+  m.setAttribute('orient','auto-start-reverse');
+  const p=document.createElementNS(SVGNS,'path');
+  p.setAttribute('d','M0,1 L9,5 L0,9 Z');p.setAttribute('fill',`var(${info.c})`);
+  m.appendChild(p);defs.appendChild(m);
+});
+svg.appendChild(defs);
+
+const vp=document.createElementNS(SVGNS,'g');vp.setAttribute('id','viewport');svg.appendChild(vp);
+const gSpokes=document.createElementNS(SVGNS,'g');
+const gFlows=document.createElementNS(SVGNS,'g');
+const gNodes=document.createElementNS(SVGNS,'g');
+vp.append(gSpokes,gFlows,gNodes);
+
+function trim(a,b){const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L;
+  return {x1:a.x+ux*a.r,y1:a.y+uy*a.r,x2:b.x-ux*b.r,y2:b.y-uy*b.r};}
+
+/* industry spokes → businesses */
+const biz=nodeById.biz;
+NODES.filter(n=>n.kind==='industry').forEach(n=>{
+  const a=trim(n,biz),l=document.createElementNS(SVGNS,'line');
+  l.setAttribute('x1',a.x1);l.setAttribute('y1',a.y1);l.setAttribute('x2',a.x2);l.setAttribute('y2',a.y2);
+  l.setAttribute('class','spoke ind');l.dataset.a=n.id;l.dataset.b='biz';gSpokes.appendChild(l);
+});
+/* company spokes → industry */
+compNodes.forEach(c=>{
+  const a=trim(c,nodeById[c.parent]),l=document.createElementNS(SVGNS,'line');
+  l.setAttribute('x1',a.x1);l.setAttribute('y1',a.y1);l.setAttribute('x2',a.x2);l.setAttribute('y2',a.y2);
+  l.setAttribute('class','spoke comp');l.dataset.a=c.id;l.dataset.b=c.parent;gSpokes.appendChild(l);
+});
+
+/* flows */
+const maxV=Math.max(...FLOWS.map(f=>f.v));
+function flowPath(a,b,off){
+  const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,px=-uy,py=ux;
+  const sx=a.x+ux*a.r+px*off,sy=a.y+uy*a.r+py*off,ex=b.x-ux*b.r+px*off,ey=b.y-uy*b.r+py*off;
+  const bow=off*0.9+Math.sign(off||1)*L*0.05;
+  return {d:`M${sx},${sy} Q${(sx+ex)/2+px*bow},${(sy+ey)/2+py*bow} ${ex},${ey}`,
+          mx:(sx+ex)/2+px*(bow*0.62),my:(sy+ey)/2+py*(bow*0.62)};
+}
+FLOWS.forEach((f,i)=>{
+  const a=nodeById[f.f],b=nodeById[f.t],path=flowPath(a,b,f.off),w=4+(f.v/maxV)*22,col=`var(${CAT[f.cat].c})`;
+  const g=document.createElementNS(SVGNS,'g');g.setAttribute('class','flow');
+  g.dataset.from=f.f;g.dataset.to=f.t;g.style.color=col;
+  const hit=document.createElementNS(SVGNS,'path');hit.setAttribute('d',path.d);hit.setAttribute('class','hit');hit.setAttribute('stroke-width',Math.max(w+16,22));
+  const line=document.createElementNS(SVGNS,'path');line.setAttribute('d',path.d);line.setAttribute('class','line');
+  line.setAttribute('stroke',col);line.setAttribute('stroke-width',w);line.setAttribute('marker-end','url(#arw-'+f.cat+')');
+  const lg=document.createElementNS(SVGNS,'g');lg.setAttribute('class','flow-label');lg.setAttribute('transform',`translate(${path.mx},${path.my})`);
+  const txt=money(f.v),rw=txt.length*8.4+14;
+  const rect=document.createElementNS(SVGNS,'rect');rect.setAttribute('x',-rw/2);rect.setAttribute('y',-11);rect.setAttribute('width',rw);rect.setAttribute('height',22);rect.setAttribute('rx',5);
+  const tx=document.createElementNS(SVGNS,'text');tx.textContent=txt;lg.append(rect,tx);
+  g.append(hit,line,lg);gFlows.appendChild(g);
+  g.addEventListener('mouseenter',()=>{if(!svg.classList.contains('has-sel'))g.classList.add('hover');showTip(flowTip(f));});
+  g.addEventListener('mousemove',moveTip);
+  g.addEventListener('mouseleave',()=>{g.classList.remove('hover');hideTip();});
+  g.addEventListener('click',e=>e.stopPropagation());
+});
+
+/* nodes */
+function wrapText(el,str,perLine,lh){
+  const words=str.split(' '),lines=[];let cur='';
+  words.forEach(w=>{if((cur+' '+w).trim().length>perLine){lines.push(cur.trim());cur=w;}else cur+=' '+w;});
+  if(cur.trim())lines.push(cur.trim());
+  el.textContent='';const y0=parseFloat(el.getAttribute('y'));
+  lines.forEach((ln,i)=>{const t=document.createElementNS(SVGNS,'tspan');
+    t.setAttribute('x',0);t.setAttribute('y',y0+(i-(lines.length-1)/2)*lh);t.textContent=ln;el.appendChild(t);});
+}
+function makeNode(n){
+  const g=document.createElementNS(SVGNS,'g');g.setAttribute('class','node '+n.kind);
+  g.setAttribute('transform',`translate(${n.x},${n.y})`);g.dataset.id=n.id;
+  const halo=document.createElementNS(SVGNS,'circle');halo.setAttribute('r',n.r+7);halo.setAttribute('class','halo');
+  halo.setAttribute('stroke','var(--copper)');halo.setAttribute('stroke-width','2');halo.setAttribute('stroke-dasharray','3 5');
+  const body=document.createElementNS(SVGNS,'circle');body.setAttribute('r',n.r);body.setAttribute('class','body');
+  const ic=document.createElementNS(SVGNS,'text');ic.setAttribute('class','ic');
+  ic.setAttribute('y', n.kind==='company'? -n.r*0.36 : (n.kind==='sector'?-n.r*0.30:-n.r*0.34));ic.textContent=n.ic;
+  const nm=document.createElementNS(SVGNS,'text');nm.setAttribute('class','nm');
+  nm.setAttribute('y', n.kind==='company'? n.r*0.02 : (n.kind==='sector'?n.r*0.12:n.r*0.05));
+  const per = n.kind==='sector'?15 : n.kind==='industry'?13 : 11;
+  const lh  = n.kind==='sector'?15.5 : n.kind==='industry'?13 : 10.5;
+  wrapText(nm, n.kind==='company'? n.short : n.nm, per, lh);
+  const sv=document.createElementNS(SVGNS,'text');sv.setAttribute('class','subv');
+  sv.setAttribute('y', n.kind==='company'? n.r*0.62 : n.r*0.5);
+  sv.textContent = n.kind==='company'? empFmt(n.emp) : n.sub;
+  g.append(halo,body,ic,nm,sv);
+  g.addEventListener('click',e=>{e.stopPropagation();select(n.id);});
+  if(n.kind==='company'){
+    g.addEventListener('mouseenter',()=>{if(!svg.classList.contains('has-sel'))showTip(compTip(n));});
+    g.addEventListener('mousemove',moveTip);g.addEventListener('mouseleave',hideTip);
+  }
+  return g;
+}
+NODES.forEach(n=>gNodes.appendChild(makeNode(n)));
+compNodes.forEach(n=>gNodes.appendChild(makeNode(n)));
+
+/* stat strip + legend */
+document.getElementById('statstrip').innerHTML=STATS.map(s=>`<div class="stat"><span class="v">${s.v}</span><span class="k">${s.k}</span></div>`).join('');
+document.getElementById('legendrows').innerHTML=Object.values(CAT).map(c=>`<div class="row"><span class="sw" style="background:var(${c.c})"></span>${c.name}</div>`).join('');
+
+/* ============================================================ DETAIL LEVEL */
+let level='industries';
+const detailCounts={
+  sectors:'Showing <b>5</b> economic sectors',
+  industries:'Showing <b>5</b> sectors + <b>6</b> industries',
+  companies:'Showing <b>5</b> sectors + <b>6</b> industries + <b>'+compNodes.length+'</b> companies'
+};
+function setLevel(lv){
+  level=lv;
+  svg.classList.remove('lvl-sectors','lvl-industries','lvl-companies');
+  svg.classList.add('lvl-'+lv);
+  document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.lvl===lv));
+  document.getElementById('detailcnt').innerHTML=detailCounts[lv];
+  // if current selection is now hidden, clear it
+  if(selected){
+    const n=nodeById[selected];
+    if((n.kind==='industry'&&lv==='sectors')||(n.kind==='company'&&lv!=='companies')){deselect();}
+  }
+  if(!userTouched) fit();
+}
+document.getElementById('seg').addEventListener('click',e=>{const b=e.target.closest('button');if(b){userTouched=false;setLevel(b.dataset.lvl);}});
+
+/* ============================================================ PAN + ZOOM */
+let view={x:0,y:0,k:1},userTouched=false;
+function fit(){
+  const rect=svg.getBoundingClientRect();if(rect.width<80||rect.height<80)return;
+  const pad=90;
+  let bounds;
+  if(level==='sectors') bounds={x0:340,y0:150,x1:1500,y1:1470};
+  else if(level==='industries') bounds={x0:120,y0:150,x1:2320,y1:1480};
+  else bounds={x0:0,y0:0,x1:VB.w,y1:VB.h};
+  const bw=bounds.x1-bounds.x0, bh=bounds.y1-bounds.y0;
+  const k=Math.min(rect.width/(bw+pad), rect.height/(bh+pad));
+  view.k=Math.min(Math.max(k,0.15),1.6);
+  view.x=(rect.width-bw*view.k)/2 - bounds.x0*view.k;
+  view.y=(rect.height-bh*view.k)/2 - bounds.y0*view.k;
+  apply();
+}
+function apply(){vp.setAttribute('transform',`translate(${view.x},${view.y}) scale(${view.k})`);}
+function clientToLocal(cx,cy){const r=svg.getBoundingClientRect();return {x:cx-r.left,y:cy-r.top};}
+function zoomAt(cx,cy,factor){
+  const p=clientToLocal(cx,cy),nk=Math.min(Math.max(view.k*factor,0.12),3.4),f=nk/view.k;
+  view.x=p.x-(p.x-view.x)*f;view.y=p.y-(p.y-view.y)*f;view.k=nk;apply();
+}
+svg.addEventListener('wheel',e=>{e.preventDefault();userTouched=true;zoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:1/1.12);},{passive:false});
+let drag=null;
+svg.addEventListener('pointerdown',e=>{if(e.button!==0)return;
+  drag={sx:e.clientX,sy:e.clientY,vx:view.x,vy:view.y,moved:false};userTouched=true;
+  svg.classList.add('grabbing');svg.setPointerCapture(e.pointerId);});
+svg.addEventListener('pointermove',e=>{if(!drag)return;
+  const dx=e.clientX-drag.sx,dy=e.clientY-drag.sy;if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;
+  view.x=drag.vx+dx;view.y=drag.vy+dy;apply();});
+function endDrag(){if(drag&&!drag.moved)deselect();drag=null;svg.classList.remove('grabbing');}
+svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
+document.getElementById('zin').onclick =()=>{userTouched=true;const r=svg.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1.25);};
+document.getElementById('zout').onclick=()=>{userTouched=true;const r=svg.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1/1.25);};
+document.getElementById('zreset').onclick=()=>{userTouched=false;fit();};
+
+/* ============================================================ TOOLTIP */
+let tip;
+function ensureTip(){if(!tip){tip=document.createElement('div');Object.assign(tip.style,{position:'fixed',zIndex:20,pointerEvents:'none',
+  maxWidth:'240px',background:'var(--panel)',color:'var(--ink)',border:'1px solid var(--line-strong)',borderRadius:'9px',
+  padding:'9px 11px',font:'500 12px/1.45 "Libre Franklin",sans-serif',boxShadow:'var(--shadow-lg)',opacity:0,transition:'opacity .1s',
+  transform:'translate(-50%,-115%)'});document.body.appendChild(tip);}}
+function flowTip(f){return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">
+  <span style="width:10px;height:10px;border-radius:3px;background:var(${CAT[f.cat].c})"></span>
+  <b style="font-family:'Fraunces',serif;font-size:13px">${f.lab}</b>
+  <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-weight:600">${money(f.v)}</span></div>
+  <div style="color:var(--ink-faint)">${nodeById[f.f].nm} → ${nodeById[f.t].nm}</div>
+  <div style="margin-top:4px;color:var(--ink-soft)">${f.d}</div>`;}
+function compTip(c){return `<div style="display:flex;align-items:center;gap:7px;margin-bottom:2px">
+  <b style="font-family:'Fraunces',serif;font-size:13.5px">${c.ic} ${c.nm}</b></div>
+  <div style="font-family:'IBM Plex Mono',monospace;color:var(--copper);font-weight:600;margin-bottom:3px">~${c.emp.toLocaleString()} local jobs</div>
+  <div style="color:var(--ink-soft)">${c.note}</div>`;}
+function showTip(html){ensureTip();tip.innerHTML=html;tip.style.opacity=1;}
+function moveTip(e){if(tip){tip.style.left=e.clientX+'px';tip.style.top=e.clientY+'px';}}
+function hideTip(){if(tip)tip.style.opacity=0;}
+
+/* ============================================================ SELECTION + PANEL */
+let selected=null;
+function clearLit(){document.querySelectorAll('.lit').forEach(e=>e.classList.remove('lit'));}
+function select(id){
+  selected=id;svg.classList.add('has-sel');clearLit();hideTip();
+  const n=nodeById[id],lit=new Set([id]);
+  if(n.kind==='sector'){
+    document.querySelectorAll('.flow').forEach(g=>{
+      if(g.dataset.from===id||g.dataset.to===id){g.classList.add('lit');lit.add(g.dataset.from);lit.add(g.dataset.to);}});
+    if(id==='biz') document.querySelectorAll('.spoke.ind').forEach(s=>{s.classList.add('lit');lit.add(s.dataset.a);});
+  } else if(n.kind==='industry'){
+    // light the spoke to businesses + the whole business flow set
+    document.querySelectorAll('.spoke.ind').forEach(s=>{if(s.dataset.a===id){s.classList.add('lit');}});
+    lit.add('biz');
+    document.querySelectorAll('.flow').forEach(g=>{
+      if(g.dataset.from==='biz'||g.dataset.to==='biz'){g.classList.add('lit');lit.add(g.dataset.from);lit.add(g.dataset.to);}});
+    if(level==='companies') document.querySelectorAll('.spoke.comp').forEach(s=>{if(s.dataset.b===id){s.classList.add('lit');lit.add(s.dataset.a);}});
+  } else { // company
+    document.querySelectorAll('.spoke.comp').forEach(s=>{if(s.dataset.a===id){s.classList.add('lit');}});
+    lit.add(n.parent);
+    document.querySelectorAll('.spoke.ind').forEach(s=>{if(s.dataset.a===n.parent){s.classList.add('lit');}});
+    lit.add('biz');
+  }
+  document.querySelectorAll('.node').forEach(g=>g.classList.toggle('lit',lit.has(g.dataset.id)));
+  renderPanel(id);
+}
+function deselect(){selected=null;svg.classList.remove('has-sel');clearLit();renderOverview();}
+
+function fRow(f,dir){const other=dir==='in'?f.f:f.t;
+  return `<div class="fitem"><span class="bar" style="background:var(${CAT[f.cat].c})"></span>
+    <div class="mid"><div class="who">${f.lab}</div>
+    <div class="desc">${dir==='in'?'from ':'to '}<b style="color:var(--ink-soft)">${nodeById[other].nm}</b> · ${f.d}</div></div>
+    <div class="val">${money(f.v)}</div></div>`;}
+
+function companyList(ind){
+  const list=COMPANIES[ind]; if(!list) return '';
+  const max=Math.max(...list.map(c=>c.emp));
+  return `<div class="clist">${list.map((c,i)=>`
+    <div class="crow" data-comp="c_${ind}_${i}">
+      <span class="crank">${i+1}</span>
+      <div class="cmid"><div class="cnm">${c.ic} ${c.nm}</div><div class="cnote">${c.note}</div></div>
+      <div class="cbar-wrap"><span class="cemp">~${empFmt(c.emp)}</span>
+        <span class="cbar-bg"><span class="cbar" style="display:block;width:${Math.max(8,c.emp/max*100)}%"></span></span></div>
+    </div>`).join('')}</div>`;
+}
+
+function renderPanel(id){
+  const n=nodeById[id];
+  let html=`<button class="backbtn show" id="back">← Back to overview</button>`;
+
+  if(n.kind==='sector'){
+    const ins=FLOWS.filter(f=>f.t===id),outs=FLOWS.filter(f=>f.f===id);
+    const sumIn=ins.reduce((a,b)=>a+b.v,0),sumOut=outs.reduce((a,b)=>a+b.v,0);
+    html+=`<div class="eyebrow">Economic sector</div><h2 class="p-title">${n.nm}</h2>
+      <div class="p-role">${n.role}</div><p class="p-blurb">${n.blurb}</p>
+      <div class="io"><div class="box in"><div class="lab">▼ Inflows</div><div class="amt">${money(sumIn)}</div></div>
+      <div class="box out"><div class="lab">▲ Outflows</div><div class="amt">${money(sumOut)}</div></div></div>`;
+    if(ins.length) html+=`<div class="flist"><h5><span class="arrow">▼</span> Money in — highlighted on the map</h5>${ins.map(f=>fRow(f,'in')).join('')}</div>`;
+    if(outs.length)html+=`<div class="flist"><h5><span class="arrow">▲</span> Money out — highlighted on the map</h5>${outs.map(f=>fRow(f,'out')).join('')}</div>`;
+    if(id==='biz'){
+      html+=`<div class="emp"><h5>The six industry pillars</h5>${NODES.filter(x=>x.kind==='industry').map(x=>`<span class="chip click" data-jump="${x.id}">${x.ic} <b>${x.nm}</b> · ${x.sub}</span>`).join('')}</div>`;
+    }
+  } else if(n.kind==='industry'){
+    const totalEmp=COMPANIES[n.id].reduce((a,b)=>a+b.emp,0);
+    html+=`<div class="eyebrow">Industry pillar</div><h2 class="p-title">${n.nm}</h2>
+      <div class="p-role">${n.role} · ${n.sub}</div><p class="p-blurb">${n.blurb}</p>`;
+    if(level!=='companies')
+      html+=`<button class="btn" id="showco">◎ Show its top companies on the map</button>`;
+    html+=`<div class="emp"><h5>Top employers <span style="color:var(--ink-faint);font-weight:600">· click to locate</span></h5></div>
+      ${companyList(n.id)}
+      <p class="note" style="border-top:0;padding-top:0;margin-top:-6px">Listed firms ≈ <b>${empFmt(totalEmp)}</b> local jobs — a sample of the pillar; the sector totals <b>${n.sub}</b>.</p>`;
+  } else { // company
+    const parent=nodeById[n.parent];
+    html+=`<div class="eyebrow">${parent.nm}</div><h2 class="p-title">${n.ic} ${n.nm}</h2>
+      <div class="p-role">Top employer · ${parent.nm}</div>
+      <div class="io" style="grid-template-columns:1fr"><div class="box in"><div class="lab" style="color:var(--copper)">● Approx. local jobs</div>
+        <div class="amt">~${n.emp.toLocaleString()}</div></div></div>
+      <p class="p-blurb">${n.note}</p>
+      <p class="p-blurb">Part of the <b>${parent.nm}</b> pillar, whose output, wages and exports feed the money flows on the main circular-flow loop.</p>
+      <span class="chip click" data-jump="${n.parent}">← Back to ${parent.nm}</span>`;
+  }
+  html+=modelNote();
+  document.getElementById('panel').innerHTML=html;
+  wireLinks();
+  const b=document.getElementById('back');if(b)b.onclick=deselect;
+  const sc=document.getElementById('showco');if(sc)sc.onclick=()=>{userTouched=false;setLevel('companies');select(n.id);};
+}
+
+function renderOverview(){
+  document.getElementById('panel').innerHTML=`
+    <div class="eyebrow">Circular flow model</div>
+    <h2 class="p-title">How money moves through Louisville</h2>
+    <p class="p-blurb">This map traces the region’s economy as a loop of income and spending between five sectors. Each arrow is a stream of money — its <b>thickness</b> is the estimated annual value, its <b>colour</b> the type of flow.</p>
+    <p class="p-blurb">At the heart of the loop: <b style="color:var(--c-income)">Businesses pay ~$66B</b> in wages and profit to households, who send <b style="color:var(--c-consumption)">~$62B back as spending</b>. Government, finance and the wider world tap that circuit through taxes, saving, investment, trade and federal transfers.</p>
+    <div class="io"><div class="box in"><div class="lab">▼ Into households</div><div class="amt">$96B</div></div>
+      <div class="box out"><div class="lab">▲ Out again</div><div class="amt">$97B</div></div></div>
+    <div class="emp"><h5>Explore the sectors</h5>
+      ${NODES.filter(n=>n.kind==='sector').map(n=>`<span class="chip click" data-jump="${n.id}">${n.ic} <b>${n.nm}</b></span>`).join('')}</div>
+    <div class="emp"><h5>Drill into an industry</h5>
+      ${NODES.filter(n=>n.kind==='industry').map(n=>`<span class="chip click" data-jump="${n.id}">${n.ic} <b>${n.nm}</b> · ${n.sub}</span>`).join('')}</div>
+    <p class="note" style="border-top:0;padding-top:0"><b>Manage the detail</b> with the control on the map: <b>Sectors</b> shows the bare loop, <b>Industries</b> adds the six pillars, and <b>Companies</b> reveals the top employers inside each one (${compNodes.length} firms). Click any bubble to highlight its money-in and money-out lines.</p>
+    ${modelNote()}`;
+  wireLinks();
+}
+function wireLinks(){
+  document.querySelectorAll('[data-jump]').forEach(el=>el.onclick=()=>{
+    const t=nodeById[el.dataset.jump];
+    if(t.kind==='industry'&&level==='sectors'){userTouched=false;setLevel('industries');}
+    select(el.dataset.jump);});
+  document.querySelectorAll('[data-comp]').forEach(el=>el.onclick=()=>{
+    if(level!=='companies'){userTouched=false;setLevel('companies');}
+    select(el.dataset.comp);});
+}
+function modelNote(){return `<p class="note"><b>About the numbers.</b> Anchor figures — GDP (~$98B, 2023), personal income (~$89.5B / $65,205 per capita), 717,700 jobs, sector employment, the $1.2B metro budget — come from the U.S. Bureau of Economic Analysis, Bureau of Labor Statistics, U.S. Census Bureau and Louisville Metro Government. Company counts are <b>approximate local employment</b> and mix HQ and operational roles. The <b>flow magnitudes are illustrative estimates</b>, scaling standard national-accounting shares to the region’s output and income — a directional model, not audited accounts.</p>`;}
+
+/* init */
+setLevel('industries');
+renderOverview();
+requestAnimationFrame(()=>requestAnimationFrame(fit));
+[120,400,900].forEach(t=>setTimeout(()=>{if(!userTouched)fit();},t));
+window.addEventListener('load',()=>{if(!userTouched)fit();});
+window.addEventListener('resize',()=>{if(!userTouched)fit();});
+if(window.ResizeObserver){new ResizeObserver(()=>{if(!userTouched)fit();}).observe(svg);}
+</script>
