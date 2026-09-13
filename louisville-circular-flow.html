@@ -244,21 +244,22 @@
     font-family:inherit;font-weight:600;padding:0;margin-bottom:14px}
   .backbtn.show{display:inline-flex}
 
-  @media (max-width:880px){
-    .app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;transition:none}
-    aside{border-left:0;border-top:1px solid var(--line);max-height:46vh;transition:max-height .26s ease}
-    .app.collapsed{grid-template-columns:1fr}
-    .app.collapsed aside{max-height:0;border-top-color:transparent}
-    .pad{padding-bottom:74px}
-    .legend{display:none}
-    .stats{gap:14px}
-    .detail{left:10px;top:10px}
-    .aside-toggle{position:fixed;right:12px;bottom:12px;top:auto;transform:none;
-      width:auto;height:38px;padding:0 15px;border:1px solid var(--copper);border-radius:20px;
-      background:var(--copper);color:#fff;box-shadow:var(--shadow-lg)}
-    .aside-toggle:hover{color:#fff}
-    .aside-toggle .lbl{display:inline}
-  }
+  /* Narrow / phone layout. Driven by a JS-set `.narrow` class that measures the
+     real container width — so it triggers even when the artifact is embedded at a
+     scaled viewport where CSS @media width can read as desktop. */
+  .app.narrow{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;transition:none}
+  .app.narrow aside{border-left:0;border-top:1px solid var(--line);max-height:46vh;transition:max-height .26s ease}
+  .app.narrow.collapsed{grid-template-columns:1fr}
+  .app.narrow.collapsed aside{max-height:0;border-top-color:transparent}
+  .app.narrow .pad{padding-bottom:80px}
+  .app.narrow .legend{display:none}
+  .app.narrow .stats{gap:14px}
+  .app.narrow .detail{left:10px;top:10px}
+  .app.narrow .aside-toggle{position:fixed;right:12px;bottom:12px;top:auto;transform:none;
+    width:auto;height:42px;padding:0 17px;gap:7px;border:1px solid var(--copper);border-radius:22px;
+    background:var(--copper);color:#fff;box-shadow:var(--shadow-lg);font-size:14px}
+  .app.narrow .aside-toggle:hover{color:#fff}
+  .app.narrow .aside-toggle .lbl{display:inline}
 </style>
 
 <div class="app">
@@ -628,16 +629,59 @@ function zoomAt(cx,cy,factor){
   view.x=p.x-(p.x-view.x)*f;view.y=p.y-(p.y-view.y)*f;view.k=nk;apply();
 }
 svg.addEventListener('wheel',e=>{e.preventDefault();userTouched=true;zoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:1/1.12);},{passive:false});
-let drag=null;
-svg.addEventListener('pointerdown',e=>{if(e.button!==0)return;
-  if(e.target.closest('.node'))return;   // let the bubble's click open its panel — don't hijack it as a pan
-  drag={sx:e.clientX,sy:e.clientY,vx:view.x,vy:view.y,moved:false};userTouched=true;
-  svg.classList.add('grabbing');svg.setPointerCapture(e.pointerId);});
-svg.addEventListener('pointermove',e=>{if(!drag)return;
-  const dx=e.clientX-drag.sx,dy=e.clientY-drag.sy;if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;
-  view.x=drag.vx+dx;view.y=drag.vy+dy;apply();});
-function endDrag(){if(drag&&!drag.moved)deselect();drag=null;svg.classList.remove('grabbing');}
-svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
+/* one-finger pan + two-finger pinch-zoom (touch), and click-through on bubbles */
+const pointers=new Map();
+let gesture=null;
+function midDist(){const p=[...pointers.values()];
+  return {mx:(p[0].x+p[1].x)/2,my:(p[0].y+p[1].y)/2,d:Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)||1};}
+svg.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse'&&e.button!==0)return;
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pointers.size===2){
+    // begin pinch — capture both, cancel any single-finger pan
+    const g=midDist();
+    gesture={mode:'pinch',d0:g.d,k0:view.k,vx0:view.x,vy0:view.y,mx0:g.mx,my0:g.my};
+    userTouched=true;svg.classList.remove('grabbing');
+    pointers.forEach((_,id)=>{try{svg.setPointerCapture(id)}catch{}});
+  } else if(pointers.size===1){
+    if(e.target.closest('.node')){gesture=null;return;}   // let the bubble's click open its panel
+    gesture={mode:'pan',id:e.pointerId,sx:e.clientX,sy:e.clientY,vx:view.x,vy:view.y,moved:false};
+    userTouched=true;svg.classList.add('grabbing');try{svg.setPointerCapture(e.pointerId)}catch{}
+  }
+});
+svg.addEventListener('pointermove',e=>{
+  if(!pointers.has(e.pointerId))return;
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(!gesture)return;
+  const r=svg.getBoundingClientRect();
+  if(gesture.mode==='pan'){
+    const dx=e.clientX-gesture.sx,dy=e.clientY-gesture.sy;
+    if(Math.abs(dx)+Math.abs(dy)>3)gesture.moved=true;
+    view.x=gesture.vx+dx;view.y=gesture.vy+dy;apply();
+  } else if(gesture.mode==='pinch'&&pointers.size>=2){
+    const g=midDist();
+    const nk=Math.min(Math.max(gesture.k0*(g.d/gesture.d0),0.12),3.4);
+    // keep the pinch focal point anchored: map the start focal (in content space) back under the current midpoint
+    const lx=(gesture.mx0-r.left-gesture.vx0)/gesture.k0, ly=(gesture.my0-r.top-gesture.vy0)/gesture.k0;
+    view.k=nk;view.x=(g.mx-r.left)-lx*nk;view.y=(g.my-r.top)-ly*nk;apply();
+  }
+});
+function releasePtr(e){
+  const wasPanTap = gesture&&gesture.mode==='pan'&&!gesture.moved;
+  pointers.delete(e.pointerId);
+  try{svg.releasePointerCapture(e.pointerId)}catch{}
+  if(gesture&&gesture.mode==='pinch'){
+    if(pointers.size===1){ // drop back to panning with the remaining finger
+      const [id,p]=[...pointers.entries()][0];
+      gesture={mode:'pan',id,sx:p.x,sy:p.y,vx:view.x,vy:view.y,moved:true};
+    } else if(pointers.size===0){ gesture=null; svg.classList.remove('grabbing'); }
+  } else if(pointers.size===0){
+    if(wasPanTap) deselect();     // a tap on empty canvas clears the selection
+    gesture=null; svg.classList.remove('grabbing');
+  }
+}
+svg.addEventListener('pointerup',releasePtr);
+svg.addEventListener('pointercancel',releasePtr);
 document.getElementById('zin').onclick =()=>{userTouched=true;const r=svg.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1.25);};
 document.getElementById('zout').onclick=()=>{userTouched=true;const r=svg.getBoundingClientRect();zoomAt(r.left+r.width/2,r.top+r.height/2,1/1.25);};
 document.getElementById('zreset').onclick=()=>{userTouched=false;fit();};
@@ -786,22 +830,30 @@ window.addEventListener('load',()=>{if(!userTouched)fit();});
 window.addEventListener('resize',()=>{if(!userTouched)fit();});
 if(window.ResizeObserver){new ResizeObserver(()=>{if(!userTouched)fit();}).observe(svg);}
 
-/* ---- collapsible sidebar (phone + desktop) ---- */
+/* ---- collapsible + responsive sidebar (phone + desktop) ---- */
 const appEl=document.querySelector('.app');
 const asideToggle=document.getElementById('asideToggle');
 const chevEl=asideToggle.querySelector('.chev');
+function isNarrow(){return appEl.classList.contains('narrow');}
 function updateChev(){
   const collapsed=appEl.classList.contains('collapsed');
-  const phone=window.matchMedia('(max-width:880px)').matches;
-  chevEl.textContent = phone ? (collapsed?'⌃':'⌄') : (collapsed?'‹':'›');
+  chevEl.textContent = isNarrow() ? (collapsed?'⌃':'⌄') : (collapsed?'‹':'›');
   asideToggle.setAttribute('aria-expanded', String(!collapsed));
   asideToggle.setAttribute('aria-label', collapsed?'Show details panel':'Hide details panel');
+}
+function updateNarrow(){
+  const w=appEl.clientWidth||window.innerWidth||960;   // real container width, robust to embed scaling
+  const wasNarrow=isNarrow();
+  appEl.classList.toggle('narrow', w<=880);
+  if(isNarrow()!==wasNarrow){updateChev(); if(!userTouched)fit();}
 }
 asideToggle.addEventListener('click',()=>{
   appEl.classList.toggle('collapsed');
   updateChev();
   fit();[160,300].forEach(t=>setTimeout(fit,t));  // recenter the map into the reclaimed space
 });
-window.addEventListener('resize',updateChev);
+window.addEventListener('resize',()=>{updateNarrow();updateChev();});
+if(window.ResizeObserver){new ResizeObserver(updateNarrow).observe(appEl);}
+updateNarrow();
 updateChev();
 </script>
