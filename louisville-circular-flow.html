@@ -392,9 +392,9 @@ const COMPANIES = {
 
 const FLOWS = [
   {f:'house', t:'biz',  v:62, cat:'consumption', lab:'Consumer spending',
-     d:'Groceries, rent, cars, healthcare, dining — household purchases of goods & services.', off:40},
+     d:'Groceries, rent, cars, healthcare, dining — household purchases of goods & services.', off:52},
   {f:'biz', t:'house',  v:66, cat:'income', lab:'Wages, salaries & profit',
-     d:'Pay to workers plus proprietor income, dividends, interest & rent to owners.', off:-40},
+     d:'Pay to workers plus proprietor income, dividends, interest & rent to owners.', off:-52},
   {f:'house', t:'govt', v:9,  cat:'tax', lab:'Household taxes',
      d:'Occupational/payroll, state income and local property taxes paid by residents.', off:16},
   {f:'biz', t:'govt',   v:4,  cat:'tax', lab:'Business taxes',
@@ -454,8 +454,9 @@ const defs=document.createElementNS(SVGNS,'defs');
 Object.entries(CAT).forEach(([key,info])=>{
   const m=document.createElementNS(SVGNS,'marker');
   m.setAttribute('id','arw-'+key);m.setAttribute('viewBox','0 0 10 10');
-  m.setAttribute('refX','8');m.setAttribute('refY','5');
-  m.setAttribute('markerWidth','7');m.setAttribute('markerHeight','7');
+  m.setAttribute('refX','8.5');m.setAttribute('refY','5');
+  m.setAttribute('markerUnits','userSpaceOnUse');   /* fixed head size, independent of line width */
+  m.setAttribute('markerWidth','21');m.setAttribute('markerHeight','21');
   m.setAttribute('orient','auto-start-reverse');
   const p=document.createElementNS(SVGNS,'path');
   p.setAttribute('d','M0,1 L9,5 L0,9 Z');p.setAttribute('fill',`var(${info.c})`);
@@ -490,13 +491,14 @@ compNodes.forEach(c=>{
 const maxV=Math.max(...FLOWS.map(f=>f.v));
 function flowPath(a,b,off){
   const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,px=-uy,py=ux;
-  const sx=a.x+ux*a.r+px*off,sy=a.y+uy*a.r+py*off,ex=b.x-ux*b.r+px*off,ey=b.y-uy*b.r+py*off;
+  const sx=a.x+ux*(a.r+3)+px*off,sy=a.y+uy*(a.r+3)+py*off;      /* small gap off source */
+  const ex=b.x-ux*(b.r+14)+px*off,ey=b.y-uy*(b.r+14)+py*off;    /* room for arrowhead at target */
   const bow=off*0.9+Math.sign(off||1)*L*0.05;
   return {d:`M${sx},${sy} Q${(sx+ex)/2+px*bow},${(sy+ey)/2+py*bow} ${ex},${ey}`,
           mx:(sx+ex)/2+px*(bow*0.62),my:(sy+ey)/2+py*(bow*0.62)};
 }
 FLOWS.forEach((f,i)=>{
-  const a=nodeById[f.f],b=nodeById[f.t],path=flowPath(a,b,f.off),w=4+(f.v/maxV)*22,col=`var(${CAT[f.cat].c})`;
+  const a=nodeById[f.f],b=nodeById[f.t],path=flowPath(a,b,f.off),w=4+(f.v/maxV)*17,col=`var(${CAT[f.cat].c})`;
   const g=document.createElementNS(SVGNS,'g');g.setAttribute('class','flow');
   g.dataset.from=f.f;g.dataset.to=f.t;g.style.color=col;
   const hit=document.createElementNS(SVGNS,'path');hit.setAttribute('d',path.d);hit.setAttribute('class','hit');hit.setAttribute('stroke-width',Math.max(w+16,22));
@@ -600,6 +602,7 @@ function zoomAt(cx,cy,factor){
 svg.addEventListener('wheel',e=>{e.preventDefault();userTouched=true;zoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:1/1.12);},{passive:false});
 let drag=null;
 svg.addEventListener('pointerdown',e=>{if(e.button!==0)return;
+  if(e.target.closest('.node'))return;   // let the bubble's click open its panel — don't hijack it as a pan
   drag={sx:e.clientX,sy:e.clientY,vx:view.x,vy:view.y,moved:false};userTouched=true;
   svg.classList.add('grabbing');svg.setPointerCapture(e.pointerId);});
 svg.addEventListener('pointermove',e=>{if(!drag)return;
